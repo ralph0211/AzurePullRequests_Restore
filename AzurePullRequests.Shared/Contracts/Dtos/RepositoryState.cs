@@ -2,10 +2,8 @@
 {
     public class RepositoryState
     {
-        public int Id { get; set; }
+        public List<PullRequestState> PullRequests { get; set; }
 
-        public DateTime LastMergeCommit { get; set; }
-
-        public DateTime ThreadLastUpdated { get; set; }
+        public string BackupLocation { get; set; }
     }
 }

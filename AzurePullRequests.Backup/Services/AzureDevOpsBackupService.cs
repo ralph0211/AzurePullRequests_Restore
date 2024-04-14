@@ -35,17 +35,17 @@ namespace AzurePullRequests.Backup.Services
                     var previousRepositoryState = GetLatestState(_backupFolder);
                     if (previousRepositoryState is null)
                     {
-                        previousRepositoryState = new List<RepositoryState>();
+                        previousRepositoryState = new List<PullRequestState>();
                     }
 
-                    var currentRepositoryState = new List<RepositoryState>();
+                    var currentRepositoryState = new RepositoryState { PullRequests = new List<PullRequestState>() };
+                    var epoch = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
                     foreach (var pullRequest in gitPullRequests.Value)
                     {
-                        var epoch = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
                         var comments = await GetPullRequestCommentThreadsAsync(pullRequest.PullRequestId, epoch);
 
-                        var prState = new RepositoryState
+                        var prState = new PullRequestState
                         {
                             Id = pullRequest.PullRequestId,
                             LastMergeCommit = pullRequest.LastMergeCommit?.Author?.Date ?? default,
@@ -69,15 +69,18 @@ namespace AzurePullRequests.Backup.Services
                         var filePath = $"C:/{_appSettings.ProjectName}/backup/{epoch}/{pullRequest.PullRequestId}.json";
                         WriteJsonToFile(prJsonString, filePath);
 
-                        currentRepositoryState.Add(prState);
+                        currentRepositoryState.PullRequests?.Add(prState);
                     }
 
-                    if (RepositoryStateHasChanged(previousRepositoryState, currentRepositoryState))
-                    {
-                        var stateFilePath = $"C:/{_appSettings.ProjectName}/backup/{DateTime.UtcNow.ToString("yyyy-MM-dd-HH-mm-ss")}.json";
+                    //if (RepositoryStateHasChanged(previousRepositoryState, currentRepositoryState))
+                    //{
+                        var stateBackupLocation = $"{_backupFolder}/{epoch}";
+                        currentRepositoryState.BackupLocation = stateBackupLocation ;
+                        var stateFilePath = $"{_backupFolder}/{DateTime.UtcNow.ToString("yyyy-MM-dd-HH-mm-ss")}.json";
                         var stateString = JsonConvert.SerializeObject(currentRepositoryState);
                         WriteJsonToFile(stateString, stateFilePath);
-                    }
+                    //}
+
                     return gitPullRequests;
                 }
                 else
@@ -182,7 +185,7 @@ namespace AzurePullRequests.Backup.Services
             }
         }
 
-        private List<RepositoryState> GetLatestState(string folderPath)
+        private List<PullRequestState> GetLatestState(string folderPath)
         {
             try
             {
@@ -196,9 +199,9 @@ namespace AzurePullRequests.Backup.Services
                 if (latestFile != null)
                 {
                     var jsonContent = File.ReadAllText(Path.Combine(folderPath, latestFile));
-                    var repositoryState = JsonConvert.DeserializeObject<List<RepositoryState>>(jsonContent);
+                    var repositoryState = JsonConvert.DeserializeObject<RepositoryState>(jsonContent);
 
-                    return repositoryState;
+                    return repositoryState.PullRequests;
                 }
                 else
                 {
@@ -213,7 +216,7 @@ namespace AzurePullRequests.Backup.Services
             }
         }
 
-        private bool RepositoryStateHasChanged(List<RepositoryState> previousState, List<RepositoryState> newState)
+        private bool RepositoryStateHasChanged(List<PullRequestState> previousState, List<PullRequestState> newState)
         {
             if (previousState.Count != newState.Count)
                 return true;
