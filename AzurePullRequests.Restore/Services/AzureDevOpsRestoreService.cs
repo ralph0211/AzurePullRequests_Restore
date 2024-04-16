@@ -50,17 +50,18 @@ namespace AzurePullRequests.Restore.Services
                 var apiUrl = $"{_organizationUrl}/_apis/git/repositories/{_appSettings.Repository}/pullrequests/{pullRequestState.Id}?api-version=7.1-preview.1";
                 var pullRequestFileLocation = $"{state.BackupLocation}/{pullRequestState.Id}.json";
                 var jsonPR = File.ReadAllText(pullRequestFileLocation);
+                var pullRequest = JsonConvert.DeserializeObject<GitPullRequest>(jsonPR);
+
                 // check if PR is in DevOps. If there update PR else create new
-                HttpContent content = new StringContent(jsonPR, Encoding.UTF8, "application/json");
                 if (await IsPullRequestInDevOps(pullRequestState.Id))
                 {
                     // update existing
-                    await RestoreDevOpsEntityAsync(RestoreType.Update, apiUrl, content);
+                    await RestoreDevOpsEntityAsync(RestoreType.Update, apiUrl, pullRequest);
                 }
                 else
                 {
                     // create new
-                    await RestoreDevOpsEntityAsync(RestoreType.Create, apiUrl, content);
+                    await RestoreDevOpsEntityAsync(RestoreType.Create, apiUrl, pullRequest);
                 }
             }
         }
@@ -132,7 +133,7 @@ namespace AzurePullRequests.Restore.Services
             }
         }
 
-        private async Task RestoreDevOpsEntityAsync(RestoreType restoreType, string apiUrl, HttpContent content)
+        private async Task RestoreDevOpsEntityAsync(RestoreType restoreType, string apiUrl, GitPullRequest pullRequest)
         {
             try
             {
@@ -145,10 +146,21 @@ namespace AzurePullRequests.Restore.Services
                     switch (restoreType)
                     {
                         case RestoreType.Create:
+                            var jsonPR = JsonConvert.SerializeObject(pullRequest);
+                            HttpContent content = new StringContent(jsonPR, Encoding.UTF8, "application/json");
                             response = await client.PostAsync(apiUrl, content);
                             break;
                         case RestoreType.Update:
-                            response = await client.PatchAsync(apiUrl, content);
+                            // update will not take certain fields o just leaving Title and Description for now.
+                            // Comments updated in own endpoint
+                            var updateObject = new
+                            {
+                                pullRequest.Title,
+                                pullRequest.Description,
+                            };
+                            var prToUpdate = JsonConvert.SerializeObject(updateObject);
+                            HttpContent content1 = new StringContent(prToUpdate, Encoding.UTF8, "application/json");
+                            response = await client.PatchAsync(apiUrl, content1);
                             break;
                         default:
                             throw new ArgumentException("Invalid restoreType value");
@@ -156,7 +168,7 @@ namespace AzurePullRequests.Restore.Services
 
                     if (response.IsSuccessStatusCode)
                     {
-                        Console.WriteLine("Pull request successfully created!");
+                        Console.WriteLine("Pull request successfully restored!");
                     }
                     else
                     {
